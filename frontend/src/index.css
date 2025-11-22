@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/* ===== Temas ===== */
+html.light {
+  --bg-color: #f8f9fa;
+  --text-color: #111;
+  --card-bg: #ffffff;
+}
+
+html.dark {
+  --bg-color: #0f0f0f;
+  --text-color: #e0e0e0;
+  --card-bg: #1a1a1a;
+}
+
+html.blue {
+  --bg-color: #0f1a2b;
+  --text-color: #e6f0ff;
+  --card-bg: #162840;
+}
+
+/* ===== Tamaños de fuente ===== */
+html.small { font-size: 14px; }
+html.medium { font-size: 16px; }
+html.large { font-size: 18px; }
+
+/* ===== Contraste alto ===== */
+html.high {
+  --bg-color: #000000 !important;
+  --text-color: #ffffff !important;
+  --card-bg: #000000 !important;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+.card, .button, .input, .container {
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+a {
+  color: var(--text-color);
+}
+
+/* ===== Root aislado del ThemeContext ===== */
+.root-isolated {
+  /* Ignorar las variables del tema global */
+  --bg-color: initial;
+  --text-color: initial;
+  --border-color: initial;
+  --accent-color: initial;
+}
+
+.no-theme {
+  color-scheme: light !important;
+  --tw-text-opacity: 1;
+  --tw-bg-opacity: 1;
+  color: #1f2937 !important; /* text-gray-800 */
+  background-color: #f9fafb !important; /* bg-gray-50 */
+  font-family: Inter, system-ui, sans-serif !important;
+}

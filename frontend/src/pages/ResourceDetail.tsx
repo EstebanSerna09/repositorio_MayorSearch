@@ -1,0 +1,332 @@
+// src/components/ResourceDetail.tsx
+import { pdfjs } from "react-pdf";
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+import { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import {
+  Download,
+  User,
+  Tags,
+  BookOpen,
+  Globe,
+  Calendar,
+  FileText,
+} from "lucide-react";
+import { getRecursoDetalle } from "../services/recursoService";
+import { Document, Page } from "react-pdf";
+import { useTheme } from "../context/ThemeContext";
+// =========================
+// Tipos
+// =========================
+type Archivo = {
+  idarchivo: number;
+  nombreoriginal?: string;
+  rutaarchivo?: string;
+  tipoarchivo?: string;
+  tamano?: number;
+};
+
+type RecursoDetalle = {
+  idrecurso: number;
+  titulo: string;
+  descripcion?: string;
+  idioma?: string;
+  ubicacion?: string;
+  creadofecha?: string;
+  verificado?: boolean;
+  autores?: string;
+  temas?: string;
+  etiquetas?: string;
+  tiporecurso?: string;
+  fechapublicacion?: string | null;
+  archivo?: Archivo;
+};
+
+// Configuración del worker de PDF.js
+
+
+export default function ResourceDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [recurso, setRecurso] = useState<RecursoDetalle | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    getRecursoDetalle(Number(id))
+      .then((data) => {
+        console.log("🧩 Recurso recibido del backend:", data);
+        if (data.ubicacion) {
+          data.ubicacion = data.ubicacion.replace(/\\/g, "/");
+        }
+        setRecurso(data);
+      })
+      .catch((err) => console.error("Error cargando detalle:", err));
+  }, [id]);
+
+  if (!recurso) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-500">
+        Cargando detalles del recurso...
+      </div>
+    );
+  }
+
+  const { theme } = useTheme();
+
+ const colors = {
+    fondo:
+      theme === "dark"
+        ? "#0f172a" // azul noche
+        : theme === "blue"
+          ? "#e9f1ff" // fondo claro azulado
+          : "#ffffff",
+
+    texto:
+      theme === "dark"
+        ? "#d1d5db" // gris claro legible
+        : theme === "blue"
+          ? "#d1d5db" // azul medio fuerte
+          : "#102A43", // azul oscuro institucional
+
+    secundario:
+      theme === "dark"
+        ? "#94a3b8" // gris-azulado
+        : theme === "blue"
+          ? "#475569" // azul grisáceo
+          : "#334155", // gris profundo
+
+    link:
+      theme === "dark"
+        ? "#60a5fa" // azul brillante para destacar
+        : theme === "blue"
+          ? "#1d4ed8" // azul principal
+          : "#004aad", // azul clásico usado en ResourceDetail
+
+    icono:
+      theme === "dark"
+        ? "#93c5fd" // azul suave visible sobre fondo oscuro
+        : theme === "blue"
+          ? "#2563eb" // azul vivo
+          : "#004aad", // igual que en links, coherencia
+
+    cardBg:
+      theme === "dark"
+        ? "#1e293b" // azul-gris oscuro
+        : theme === "blue"
+          ? "#f0f7ff" // casi blanco con tinte azul
+          : "#ffffff",
+  };
+
+
+  return (
+    <div className="min-h-screen px-6 py-24 overflow-y-auto" style={{
+      backgroundColor: "var(--bg-color)",
+      color: "var(--text-color)",
+      border: "1px solid var(--text-color)",
+    }}>
+      {/* Ruta de navegación */}
+      <p className="text-2xl text-gray-500 mb-2">
+        <Link to="/home" className="hover:underline text-blue-600">
+          Inicio
+        </Link>{" "}
+        <Link to="/explorar" className="hover:underline text-blue-600">
+          / Explorar 
+        </Link>{" "}
+         /
+        {recurso.titulo}
+      </p>
+
+      {/* Título */}
+      <h1
+        className="text-4xl font-bold mb-4"
+        style={{ color: colors.icono }}
+      >
+        {recurso.titulo}
+      </h1>
+
+      {/* Info general arriba */}
+      <div className="text-sm mb-8 space-y-2">
+        {recurso.ubicacion && (
+          <p>
+            <span className="font-semibold">URL:</span>{" "}
+            <a
+              href={recurso.ubicacion}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline break-all"
+            >
+              {recurso.ubicacion}
+            </a>
+          </p>
+        )}
+        {recurso.fechapublicacion && (
+          <p>
+            <span className="font-semibold">Fecha publicación:</span>{" "}
+            {new Date(recurso.fechapublicacion).toLocaleDateString()}
+          </p>
+        )}
+      </div>
+
+      {/* Contenido principal */}
+      <div className="flex flex-col lg:flex-row gap-8">
+        {/* Vista previa del PDF y botón */}
+        <div className="flex-1 bg-white shadow-md rounded-2xl p-6">
+          <div className="bg-gray-100 rounded-lg flex flex-col items-center justify-center overflow-hidden p-4">
+            {recurso.ubicacion ? (
+              <>
+
+                <div className="flex justify-center w-full">
+                  <div className="flex flex-col items-center justify-center 
+                  w-full max-w-[550px] max-h-[650px]
+                  overflow-y-auto bg-gray-100 rounded-xl shadow-inner p-4">
+                    <Document
+                      file={`http://localhost:8000/${recurso.ubicacion.replace(/\\/g, "/")}`}
+                      renderMode="canvas"
+                      loading={
+                        <div className="text-gray-500 py-10 italic">
+                          Cargando vista previa del PDF...
+                        </div>
+                      }
+                      onLoadError={(err) => console.error("❌ Error PDF:", err.message)}
+                      onLoadSuccess={({ numPages }) =>
+                        console.log(`✅ PDF cargado con ${numPages} páginas`)
+                      }
+                      className="flex flex-col items-center"
+                    >
+                      <Page
+                        pageNumber={1}
+                        width={500}
+                        renderTextLayer={false}   // Desactiva el texto flotante (mejor para ver imágenes)
+                        renderAnnotationLayer={false} // Quita bordes azules de links, etc.
+                        renderMode="canvas"
+                      />
+                    </Document>
+                  </div>
+                </div>
+                {/* Botón de descarga / visualización */}
+                <div className="mt-6 text-center">
+                  <a
+                    href={`http://localhost:8000/${recurso.ubicacion.replace(/\\/g, "/")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-sm"
+                  >
+                    <Download size={18} /> Ver / Descargar PDF
+                  </a>
+                </div>
+              </>
+            ) : (
+              <div className="text-gray-400 italic py-20">
+                Sin vista previa disponible
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Resumen y metadatos */}
+        <div className="flex-1 rounded-2xl p-1">
+          <h2 className="font-bold text-lg mb-3">Resumen</h2>
+          <p className="text-sm leading-relaxed mb-5" style={{ color: colors.texto }}>
+            {recurso.descripcion || "Sin descripción disponible."}
+          </p>
+
+          <div className="space-y-4 text-sm">
+            {/* Tipo */}
+            <div className="flex items-center gap-2" style={{ color: colors.texto }}>
+              <BookOpen size={16} style={{ color: colors.icono }} />
+              <span className="font-semibold" style={{ color: colors.texto }}>
+                Tipo:
+              </span>{" "}
+              {recurso.tiporecurso || "No especificado"}
+            </div>
+
+            {/* Idioma */}
+            <div className="flex items-center gap-2" style={{ color: colors.texto }}>
+              <Globe size={16} style={{ color: colors.icono }} />
+              <span className="font-semibold" style={{ color: colors.texto }}>
+                Idioma:
+              </span>{" "}
+              {recurso.idioma?.toUpperCase() || "No definido"}
+            </div>
+
+            {/* Fecha */}
+            {recurso.fechapublicacion && (
+              <div className="flex items-center gap-2" style={{ color: colors.texto }}>
+                <Calendar size={16} style={{ color: colors.icono }} />
+                <span className="font-semibold" style={{ color: colors.texto }}>
+                  Fecha:
+                </span>{" "}
+                {new Date(recurso.fechapublicacion).toLocaleDateString()}
+              </div>
+            )}
+
+            {/* Autores */}
+            {recurso.autores && (
+              <div>
+                <p
+                  className="font-semibold flex items-center gap-2 mb-1"
+                  style={{ color: theme === "dark" ? "#6ea8ff" : theme === "blue" ? "#6fb1ff" : "#0a3d91" }}
+                >
+                  <User
+                    size={16}
+                    style={{ color: theme === "dark" ? "#6ea8ff" : theme === "blue" ? "#6fb1ff" : "#0a3d91" }}
+                  />{" "}
+                  Autores:
+                </p>
+                <p className="ml-6" style={{ color: colors.texto }}>
+                  {recurso.autores}
+                </p>
+              </div>
+            )}
+
+            {/* Temas */}
+            {recurso.temas && (
+              <div>
+                <p
+                  className="font-semibold flex items-center gap-2 mb-1"
+                  style={{ color: theme === "dark" ? "#c2a7ff" : theme === "blue" ? "#c9b3ff" : "#6b21a8" }}
+                >
+                  <FileText
+                    size={16}
+                    style={{ color: theme === "dark" ? "#c2a7ff" : theme === "blue" ? "#c9b3ff" : "#6b21a8" }}
+                  />{" "}
+                  Temas:
+                </p>
+                <p className="ml-6" style={{ color: colors.texto }}>
+                  {recurso.temas}
+                </p>
+              </div>
+            )}
+
+            {/* Etiquetas */}
+            {recurso.etiquetas && (
+              <div>
+                <p
+                  className="font-semibold flex items-center gap-2 mb-1"
+                  style={{ color: theme === "dark" ? "#8ee0b3" : theme === "blue" ? "#9af5c3" : "#047857" }}
+                >
+                  <Tags
+                    size={16}
+                    style={{ color: theme === "dark" ? "#8ee0b3" : theme === "blue" ? "#9af5c3" : "#047857" }}
+                  />{" "}
+                  Etiquetas:
+                </p>
+                <p className="ml-6" style={{ color: colors.texto }}>
+                  {recurso.etiquetas
+                    .split(",")
+                    .map((etq, i) => (
+                      <span key={i}>
+                        {etq.trim()}
+                        {i < recurso.etiquetas!.split(",").length - 1 && ", "}
+                      </span>
+                    ))}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}

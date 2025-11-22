@@ -1,0 +1,105 @@
+// src/App.tsx
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Login from "./pages/Login";
+import Home from "./pages/Home";
+import Root from "./pages/Root"; 
+import { AuthProvider } from "./hooks/useAuth";
+import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import Profile from "./pages/Profile";
+import ResourceDetail from "./pages/ResourceDetail";
+import Explorar from "./pages/Explorar"
+import TeoriaDeGrafos from "./pages/TeoriaDeGrafos"; 
+import RecursosTeoriaGrafos from "./pages/RecursosTeoriaGrafos"; 
+import AnalisisNumerico from "./pages/AnalisisNumerico"; 
+import RecursosAnalisisNumerico from "./pages/RecursosAnalisisNumerico";
+import Autores from "./pages/Autores"; 
+import ProfileAutor from "./pages/ProfileAutor";
+import RecursoCRUD from "./pages/RecursoCRUD";
+import RecursoForm from "./components/RecursoForm";
+import PrivateRoute from "./components/PrivateRoute";
+import Ajustes from "./pages/Ajustes";
+import ThemeWrapper from "./components/ThemeWrapper";
+import Ayuda from "./pages/Ayuda";
+function App() {
+  return (
+    <ThemeWrapper>
+    <AuthProvider>
+    <BrowserRouter>
+      <Routes>
+        {/* Ruta del Login */}
+        <Route path="/login" element={<Login />} />
+
+        {/* Ruta principal para usuarios logueados */}
+        <Route path="/home" element={<Home />} />
+
+        {/* Ruta raíz, accesible para todos */}
+        <Route path="/" element={<Root />} />
+
+        {/* Ruta del Registro */}
+        <Route path="/register" element={<Register />} />
+
+        {/* Ruta del Olvido */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+
+        {/* Ruta del Resset */}
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+        <Route path="/profile" element={<Profile />} />
+
+        <Route path="/recurso/:id" element={<ResourceDetail />} />
+
+        <Route path="/explorar" element={<Explorar />} />
+
+        <Route path="/teoriadegrafos" element={<TeoriaDeGrafos />} />
+
+        <Route path="/recursosteoriadegrafos" element={<RecursosTeoriaGrafos />} />
+
+        <Route path="/analisisnumerico" element={<AnalisisNumerico />} />
+
+        <Route path="/recursosanalisisnumerico" element={<RecursosAnalisisNumerico />} />
+
+        <Route path="/autores" element={<Autores />} />
+
+        <Route path="/autores/:id" element={<ProfileAutor />} />
+
+        <Route path="/ajustes" element={<Ajustes />} />
+
+        <Route path="/ayuda" element={<Ayuda />} />
+
+<Route
+  path="/admin/recursos"
+  element={
+    <PrivateRoute roles={["admin", "docente"]}>
+      <RecursoCRUD />
+    </PrivateRoute>
+  }
+/>
+
+<Route
+  path="/admin/recursos/nuevo"
+  element={
+    <PrivateRoute roles={["admin", "docente"]}>
+      <RecursoForm />
+    </PrivateRoute>
+  }
+/>
+
+<Route
+  path="/admin/recursos/editar/:id"
+  element={
+    <PrivateRoute roles={["admin", "docente"]}>
+      <RecursoForm />
+    </PrivateRoute>
+  }
+/>
+
+      </Routes>
+    </BrowserRouter>
+    </AuthProvider>
+    </ThemeWrapper>
+  );
+}
+
+export default App;

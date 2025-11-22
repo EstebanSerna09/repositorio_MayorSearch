@@ -1,0 +1,611 @@
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import recursoCrudService from "../services/recursoCrudService";
+import type { Recurso } from "../services/recursoCrudService";
+import RecursoEtiquetaService, {
+  type RecursoEtiqueta,
+} from "../services/recursoEtiquetaService";
+import RecursoAutorService, { type RecursoAutor } from "../services/recursoAutorService";
+import RecursoTemaService, { type RecursoTema } from "../services/recursoTemaService";
+import API from "../services/api";
+import { useAuth } from "../hooks/useAuth";
+import { Save, FileUp, ArrowLeft } from "lucide-react";
+
+export default function RecursoForm() {
+  const navigate = useNavigate();
+  const { id } = useParams(); // Si existe, estamos editando
+  const { user } = useAuth();
+
+  const [formData, setFormData] = useState<Partial<Recurso>>({
+    titulo: "",
+    descripcion: "",
+    tiporecurso: "",
+    idioma: "",
+    verificado: false,
+  });
+  const [file, setFile] = useState<File | null>(null);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+    // Estados para etiquetas
+    const [etiquetas, setEtiquetas] = useState<{ idetiqueta: number; nombreetiqueta: string }[]>([]);
+    const [selectedEtiquetas, setSelectedEtiquetas] = useState<number[]>([]);
+
+    // Estados para autores
+    const [autores, setAutores] = useState<{ idautor: number; nombre: string }[]>([]);
+    const [searchAutor, setSearchAutor] = useState("");
+    const [selectedAutores, setSelectedAutores] = useState<{ idautor: number; nombre: string }[]>([]);
+
+    // Tema (texto libre)
+    const [temaTexto, setTemaTexto] = useState("");
+    // @ts-ignore
+    const [idTema, setIdTema] = useState<number | null>(null);
+
+  // ✅ Cargar etiquetas desde la BD
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await API.get("/etiquetas/");
+        setEtiquetas(res.data);
+      } catch (error) {
+        console.error("Error cargando etiquetas:", error);
+      }
+    })();
+  }, []);
+
+  // ✅ Buscar autores mientras se escribe
+useEffect(() => {
+  const fetchAutores = async () => {
+    if (searchAutor.trim().length < 2) return; // Solo busca si hay al menos 2 letras
+    try {
+      const res = await API.get(`/autores/?q=${searchAutor}`);
+      setAutores(
+  (res.data || []).map((a: any) => ({
+    idautor: a.idautor,
+    nombre: a.nombre || a.nombreautor || "Sin nombre",
+  }))
+);
+    } catch (error) {
+      console.error("Error buscando autores:", error);
+    }
+  };
+  fetchAutores();
+}, [searchAutor]);
+
+  // ✅ Cargar recurso existente si estamos editando
+  useEffect(() => {
+    if (id) {
+      (async () => {
+        try {
+          const data = await recursoCrudService.getById(Number(id));
+
+          // 💬 Normalizamos el idioma
+          let idiomaNormalizado = data.idioma;
+          if (data.idioma === "Español") idiomaNormalizado = "es";
+          else if (data.idioma === "Inglés") idiomaNormalizado = "en";
+          else if (!["es", "en", "otro"].includes(data.idioma))
+            idiomaNormalizado = "otro";
+
+          setFormData({
+            ...data,
+            idioma: idiomaNormalizado || "",
+          });
+
+          setPreviewFile(data.archivo?.ruta_archivo || null);
+
+          // 🟢 Cargar etiquetas asociadas a este recurso
+          const allLinks = await RecursoEtiquetaService.getAll();
+          const etiquetasAsociadas = allLinks
+            .filter((link: RecursoEtiqueta) => link.idrecurso === Number(id))
+            .map((link: { idetiqueta: any; }) => link.idetiqueta);
+          setSelectedEtiquetas(etiquetasAsociadas);
+        } catch (error) {
+          alert("Error al cargar el recurso");
+        }
+
+        // 🟢 Cargar autores asociados (versión con nombres)
+        try {
+        const [allLinksAutor, resAutores] = await Promise.all([
+            RecursoAutorService.getAll(),
+            API.get("/autores/"),
+        ]);
+
+        const autoresAsociados = allLinksAutor
+        .filter((link: RecursoAutor) => link.idrecurso === Number(id))
+        .map((link: { idautor: any }) => {
+            const autor = resAutores.data.find((a: any) => a.idautor === link.idautor);
+            return autor
+            ? { idautor: autor.idautor, nombre: autor.nombre || autor.nombreautor }
+            : { idautor: link.idautor, nombre: `Autor #${link.idautor}` };
+        });
+
+        setSelectedAutores(autoresAsociados);
+        } catch (error) {
+        console.error("Error cargando autores asociados:", error);
+        }
+
+        try {
+        const resTemas = await API.get("/temas/");
+        const allLinksTemas = await RecursoTemaService.getAll();
+        const vinculo = allLinksTemas.find(
+            (link: RecursoTema) => link.idrecurso === Number(id)
+        );
+        if (vinculo) {
+            const tema = resTemas.data.find((t: any) => t.idtema === vinculo.idtema);
+            if (tema) {
+            setTemaTexto(tema.nombretema);
+            setIdTema(tema.idtema);
+            }
+        }
+        } catch (error) {
+        console.error("Error cargando tema asociado:", error);
+        }
+
+      })();
+    }
+  }, [id]);
+
+  // ✅ Manejar cambios en campos (corregido para checkbox)
+  const handleChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) => {
+    const target = e.target as
+      | HTMLInputElement
+      | HTMLTextAreaElement
+      | HTMLSelectElement;
+    const { name, value, type } = target;
+    const fieldValue =
+      type === "checkbox" ? (target as HTMLInputElement).checked : value;
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: fieldValue,
+    }));
+  };
+
+  // ✅ Manejar cambio de archivo
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0] || null;
+    setFile(selectedFile);
+    if (selectedFile) {
+      setPreviewFile(URL.createObjectURL(selectedFile));
+    }
+  };
+
+  // 🟢 Manejar selección múltiple de etiquetas
+  const handleEtiquetaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const options = e.target.options;
+    const selected: number[] = [];
+    for (const opt of options) {
+      if (opt.selected) selected.push(Number(opt.value));
+    }
+    setSelectedEtiquetas(selected);
+  };
+
+  // ✅ Guardar (crear o actualizar)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.titulo || !formData.tiporecurso || !formData.idioma) {
+      alert("Por favor completa todos los campos obligatorios");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let recursoCreado: Recurso;
+
+      if (id) {
+        recursoCreado = await recursoCrudService.update(
+          Number(id),
+          formData,
+          file || undefined
+        );
+        alert("Recurso actualizado correctamente");
+      } else {
+        recursoCreado = await recursoCrudService.create(
+          formData,
+          file || undefined
+        );
+        alert("Recurso creado con éxito");
+      }
+
+      // 🟢 Vincular etiquetas seleccionadas
+      if (selectedEtiquetas.length > 0) {
+        const idrecurso = id ? Number(id) : recursoCreado.idrecurso;
+        const allLinks = await RecursoEtiquetaService.getAll();
+
+        // Borramos las etiquetas previas si estamos editando
+        const actuales = allLinks.filter((l: RecursoEtiqueta) => l.idrecurso === idrecurso);
+        for (const vinculo of actuales) {
+          await RecursoEtiquetaService.delete(vinculo);
+        }
+
+        // Agregamos las nuevas etiquetas seleccionadas
+        for (const idetiqueta of selectedEtiquetas) {
+          await RecursoEtiquetaService.add({ idrecurso, idetiqueta });
+        }
+      }
+
+      // 🟢 Vincular autores seleccionados
+        if (selectedAutores.length > 0) {
+        const idrecurso = id ? Number(id) : recursoCreado.idrecurso;
+        const allLinksAutor = await RecursoAutorService.getAll();
+
+        // Borrar vínculos previos si estamos editando
+        const actuales = allLinksAutor.filter((l: RecursoAutor) => l.idrecurso === idrecurso);
+        for (const vinculo of actuales) {
+        await RecursoAutorService.delete(vinculo.idrecurso, vinculo.idautor);
+        }
+
+        // Agregar los nuevos autores seleccionados
+        for (const autor of selectedAutores) {
+        await RecursoAutorService.add({ idrecurso, idautor: autor.idautor });
+        }
+        }
+
+        // Vincular tema (solo si hay texto)
+        if (temaTexto.trim() !== "") {
+        const idrecurso = id ? Number(id) : recursoCreado.idrecurso;
+
+        try {
+            // Buscar si el tema ya existe
+            const resTemas = await API.get("/temas/");
+            let temaExistente = resTemas.data.find(
+            (t: any) => t.nombretema.toLowerCase() === temaTexto.trim().toLowerCase()
+            );
+
+            // Si no existe, crearlo
+            if (!temaExistente) {
+            const nuevo = await API.post("/temas/", { nombretema: temaTexto.trim() });
+            temaExistente = nuevo.data;
+            }
+
+            // Borrar vínculo previo si estamos editando
+            const allLinksTemas = await RecursoTemaService.getAll();
+            const actuales = allLinksTemas.filter(
+            (l: RecursoTema) => l.idrecurso === idrecurso
+            );
+            for (const vinculo of actuales) {
+            await RecursoTemaService.delete(vinculo);
+            }
+
+            // Crear el nuevo vínculo
+            await RecursoTemaService.add({
+            idrecurso,
+            idtema: temaExistente.idtema,
+            });
+        } catch (error) {
+            console.error("Error vinculando tema:", error);
+        }
+        }
+        
+      navigate("/admin/recursos");
+    } catch (error) {
+      console.error(error);
+      alert("Error al guardar el recurso");
+    } finally {
+      setLoading(false);
+    }  
+  };
+
+  return (
+    <div className=" no-theme flex flex-col items-center justify-start min-h-screen p-6">
+      <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl p-8 border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold text-blue-700">
+            {id ? "Editar Recurso" : "Nuevo Recurso"}
+          </h1>
+
+          <button
+            onClick={() => navigate("/admin/recursos")}
+            className="flex items-center gap-2 text-gray-600 hover:text-blue-700 transition"
+          >
+            <ArrowLeft className="w-4 h-4" /> Volver
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Título */}
+          <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+              Título *
+            </label>
+            <input
+              type="text"
+              name="titulo"
+              value={formData.titulo || ""}
+              onChange={handleChange}
+              className="w-full border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg px-3 py-2 outline-none transition"
+              placeholder="Título del recurso"
+              required
+            />
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+              Descripción
+            </label>
+            <textarea
+              name="descripcion"
+              value={formData.descripcion || ""}
+              onChange={handleChange}
+              rows={3}
+              className="w-full border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg px-3 py-2 outline-none transition"
+              placeholder="Describe brevemente el contenido..."
+            />
+          </div>
+
+          {/* Tipo de recurso (🟢 cambiado a input libre) */}
+            <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+                Tipo de recurso *
+            </label>
+            <input
+                type="text"
+                name="tiporecurso"
+                value={formData.tiporecurso || ""}
+                onChange={handleChange}
+                placeholder="Ejemplo: Libro, Artículo, Tesis..."
+                className="w-full border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg px-3 py-2 outline-none transition"
+                required
+            />
+            </div>
+
+            {/* 🟢 Nuevo campo: Fecha de publicación */}
+            <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+                Fecha de publicación (YYYY-MM-DD)
+            </label>
+            <input
+                type="text"
+                name="fechapublicacion"
+                value={formData.fechapublicacion || ""}
+                onChange={handleChange}
+                placeholder="(YYYY-MM-DD)"
+                pattern="\d{4}-\d{2}-\d{2}"
+                className="w-full border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg px-3 py-2 outline-none transition"
+            />
+            </div>
+
+          {/* Idioma */}
+          <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+              Idioma *
+            </label>
+            <select
+              name="idioma"
+              value={formData.idioma || ""}
+              onChange={handleChange}
+              className="w-full border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg px-3 py-2 outline-none transition"
+              required
+            >
+              <option value="">Seleccionar idioma...</option>
+              <option value="es">Español</option>
+              <option value="en">Inglés</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+            
+            {/* 🟢 Autores */}
+            <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+                Autores
+            </label>
+
+            {/* Input para buscar autores */}
+            <input
+                type="text"
+                value={searchAutor}
+                onChange={(e) => setSearchAutor(e.target.value)}
+                placeholder="Buscar autores..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
+            />
+
+            {/* Lista de sugerencias */}
+            {searchAutor && autores.length > 0 && (
+                <div className="border border-gray-200 rounded-lg mt-1 bg-white shadow-md max-h-40 overflow-y-auto">
+                {autores.map((a) => (
+                    <div
+                    key={a.idautor}
+                    onClick={() => {
+                    if (!selectedAutores.some((sel) => sel.idautor === a.idautor)) {
+                        setSelectedAutores((prev) => [...prev, { idautor: a.idautor, nombre: a.nombre }]);
+                    }
+                    setSearchAutor("");
+                    }}
+                    className="px-3 py-2 cursor-pointer text-gray-800 hover:bg-blue-100 hover:text-blue-800 transition"
+                    >
+                    {a.nombre}
+                    </div>
+                ))}
+                </div>
+            )}
+
+            {/* Autores seleccionados */}
+                <div className="flex flex-wrap gap-2 mt-2">
+                {selectedAutores.map((a) => (
+                <span
+                    key={a.idautor}
+                    className="flex items-center gap-1 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
+                >
+                    {a.nombre}
+                    <button
+                    type="button"
+                    onClick={() =>
+                        setSelectedAutores((prev) => prev.filter((x) => x.idautor !== a.idautor))
+                    }
+                    className="text-red-500 hover:text-red-700 ml-1"
+                    >
+                    ✕
+                    </button>
+                </span>
+                ))}
+                </div>
+            </div>
+
+            {/* 🟢 Campo para tema */}
+            <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+                Tema principal
+            </label>
+            <input
+                type="text"
+                value={temaTexto}
+                onChange={(e) => setTemaTexto(e.target.value)}
+                placeholder="Ejemplo: Álgebra lineal, Redes, Optimización..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
+            />
+            <p className="text-sm text-gray-500 mt-1">
+                Escribe libremente el tema principal del recurso.
+            </p>
+            </div>
+
+          {/* 🟢 Selector múltiple de etiquetas mejorado y ordenado */}
+            <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+                Etiquetas
+            </label>
+            <select
+                multiple
+                value={selectedEtiquetas.map(String)}
+                onChange={handleEtiquetaChange}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition h-52"
+            >
+                {/* --- Etiquetas de Asignatura --- */}
+                <option disabled className="font-bold text-gray-600 bg-gray-100">
+                — Etiquetas de Asignatura —
+                </option>
+                {etiquetas
+                .filter((et) =>
+                    ["Teoria de grafos", "Analisis numerico"].includes(et.nombreetiqueta)
+                )
+                .sort((a, b) => a.nombreetiqueta.localeCompare(b.nombreetiqueta))
+                .map((et) => (
+                    <option key={et.idetiqueta} value={et.idetiqueta}>
+                    {et.nombreetiqueta}
+                    </option>
+                ))}
+
+                {/* --- Etiquetas de Tipo de recurso --- */}
+                <option disabled className="font-bold text-gray-600 bg-gray-100 mt-2">
+                — Etiquetas de Tipo de recurso —
+                </option>
+                {etiquetas
+                .filter((et) =>
+                    ["Libro", "Articulo", "Tesis", "Monografia", "Documento", "Apuntes"].includes(
+                    et.nombreetiqueta
+                    )
+                )
+                .sort(
+                    (a, b) =>
+                    [
+                        "Libro",
+                        "Articulo",
+                        "Tesis",
+                        "Monografia",
+                        "Documento",
+                        "Apuntes",
+                    ].indexOf(a.nombreetiqueta) -
+                    [
+                        "Libro",
+                        "Articulo",
+                        "Tesis",
+                        "Monografia",
+                        "Documento",
+                        "Apuntes",
+                    ].indexOf(b.nombreetiqueta)
+                )
+                .map((et) => (
+                    <option key={et.idetiqueta} value={et.idetiqueta}>
+                    {et.nombreetiqueta}
+                    </option>
+                ))}
+
+                {/* --- Etiquetas de Nivel académico --- */}
+                <option disabled className="font-bold text-gray-600 bg-gray-100 mt-2">
+                — Etiquetas de Nivel académico —
+                </option>
+                {etiquetas
+                .filter((et) =>
+                    ["Basico", "Intermedio", "Avanzado"].includes(et.nombreetiqueta)
+                )
+                .sort(
+                    (a, b) =>
+                    ["Basico", "Intermedio", "Avanzado"].indexOf(a.nombreetiqueta) -
+                    ["Basico", "Intermedio", "Avanzado"].indexOf(b.nombreetiqueta)
+                )
+                .map((et) => (
+                    <option key={et.idetiqueta} value={et.idetiqueta}>
+                    {et.nombreetiqueta}
+                    </option>
+                ))}
+            </select>
+
+            <p className="text-sm text-gray-500 mt-1">
+                (Mantén Ctrl o Cmd para seleccionar varias)
+            </p>
+            </div>
+
+          {/* Verificado (solo admin o docente) */}
+          {typeof user === "object" &&
+            (user?.rol === "admin" || user?.rol === "docente") && (
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="checkbox"
+                  name="verificado"
+                  checked={!!formData.verificado}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-400"
+                />
+                <label className="font-semibold text-gray-700">
+                  Recurso verificado
+                </label>
+              </div>
+            )}
+
+          {/* Subida de archivo */}
+          <div>
+            <label className="block font-semibold mb-1 text-gray-700">
+              Archivo PDF
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleFileChange}
+                className="block w-full text-sm text-gray-700 border border-gray-300 rounded-lg cursor-pointer focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
+              />
+              <FileUp className="text-blue-600 w-6 h-6" />
+            </div>
+
+            {previewFile && (
+              <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                <iframe
+                  src={previewFile}
+                  className="w-full h-64"
+                  title="Vista previa del archivo"
+                ></iframe>
+              </div>
+            )}
+          </div>
+
+          {/* Botón Guardar */}
+          <div className="flex justify-end mt-6">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-2 rounded-lg transition disabled:opacity-50 shadow-md"
+            >
+              <Save className="w-5 h-5" />
+              {loading ? "Guardando..." : id ? "Actualizar" : "Guardar"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
